@@ -86,6 +86,7 @@ from .const import (
     SERVICE_CHANGE_FRIEND_ALIAS_SCHEMA,
     SERVICE_REMOVE_FRIEND_ALIAS_SCHEMA,
     SERVICE_GET_ALL_GROUPS_SCHEMA,
+    SERVICE_GET_GROUP_CHAT_HISTORY_SCHEMA,
     SERVICE_ADD_GROUP_DEPUTY_SCHEMA,
     SERVICE_REMOVE_GROUP_DEPUTY_SCHEMA,
     SERVICE_CHANGE_GROUP_OWNER_SCHEMA,
@@ -125,7 +126,7 @@ def get_device_info():
         name="Zalo Bot",
         manufacturer="Smarthome Black",
         model="Zalo Bot",
-        sw_version="2025.10.11",
+        sw_version="2026.3.21",
     )
 
 async def async_setup(hass, config):
@@ -483,6 +484,15 @@ async def async_setup_entry(hass, entry):
         DOMAIN, "get_all_groups",
         get_all_groups,
         schema=SERVICE_GET_ALL_GROUPS_SCHEMA,
+        supports_response=True
+    )
+
+    async def get_group_chat_history(call):
+        return await group_features.async_get_group_chat_history_service(hass, call, zalo_login)
+    hass.services.async_register(
+        DOMAIN, "get_group_chat_history",
+        get_group_chat_history,
+        schema=SERVICE_GET_GROUP_CHAT_HISTORY_SCHEMA,
         supports_response=True
     )
 

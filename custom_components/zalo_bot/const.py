@@ -250,6 +250,12 @@ SERVICE_GET_ALL_GROUPS_SCHEMA = vol.Schema({
     vol.Required("account_selection"): cv.string,
 })
 
+SERVICE_GET_GROUP_CHAT_HISTORY_SCHEMA = vol.Schema({
+    vol.Required("group_id"): cv.string,
+    vol.Optional("count", default=50): vol.All(int, vol.Range(min=1, max=200)),
+    vol.Required("account_selection"): cv.string,
+})
+
 SERVICE_ADD_GROUP_DEPUTY_SCHEMA = vol.Schema({
     vol.Required("group_id"): cv.string,
     vol.Required("member_id"): cv.string,
