@@ -130,7 +130,7 @@ def get_device_info():
         name="Zalo Bot",
         manufacturer="Smarthome Black",
         model="Zalo Bot",
-        sw_version="2026.3.21",
+        sw_version="2026.5.10",
     )
 
 async def async_setup(hass, config):
