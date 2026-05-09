@@ -6,10 +6,14 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from .const import (
     CONF_ENABLE_NOTIFICATIONS,
+    CONF_MARKDOWN_COLOR,
+    CONF_MARKDOWN_ENABLED,
     CONF_ZALO_SERVER,
     CONF_USERNAME,
     CONF_PASSWORD,
     DEFAULT_ENABLE_NOTIFICATIONS,
+    DEFAULT_MARKDOWN_COLOR,
+    DEFAULT_MARKDOWN_ENABLED,
     DOMAIN,
     PLATFORMS,
     SERVICE_ADD_PROXY_SCHEMA,
@@ -139,6 +143,10 @@ async def async_setup_entry(hass, entry):
     # Đảm bảo có cài đặt enable_notifications
     if CONF_ENABLE_NOTIFICATIONS not in config:
         config[CONF_ENABLE_NOTIFICATIONS] = DEFAULT_ENABLE_NOTIFICATIONS
+
+    # Khởi tạo markdown config mặc định
+    hass.data[DOMAIN].setdefault(CONF_MARKDOWN_ENABLED, DEFAULT_MARKDOWN_ENABLED)
+    hass.data[DOMAIN].setdefault(CONF_MARKDOWN_COLOR, DEFAULT_MARKDOWN_COLOR)
 
     # Khởi tạo session và các biến toàn cục
     global session, zalo_server, WWW_DIR, PUBLIC_DIR

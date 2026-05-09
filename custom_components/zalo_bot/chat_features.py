@@ -2,6 +2,7 @@
 import logging
 import os
 import asyncio
+from .const import DOMAIN
 from .file_handling import serve_file_temporarily, copy_to_public, get_video_duration_ms
 from .file_handling import serve_file_temporarily, get_video_duration_ms, copy_to_public
 from .notification import show_result_notification
@@ -29,27 +30,63 @@ def _py_to_js_pos(text, py_pos):
     return _js_len(text[:py_pos])
 
 
-def markdown_to_zalo_styles(text):
+ZALO_COLORS = {
+    "red": "c_db342e",
+    "orange": "c_f27806",
+    "yellow": "c_f7b503",
+    "green": "c_15a85f",
+}
+
+
+def _resolve_style_token(style_input):
+    """Resolve style input to a Zalo st token.
+
+    - "off" / "" / None -> None (just bold)
+    - "red", "orange", ... -> "c_xxx,b" (color + bold)
+    - "b", "i", "u", "s" -> raw token
+    - "c_db342e,b" -> raw passthrough
+    """
+    if not style_input or style_input == "off":
+        return None
+    style_input = style_input.strip().lower()
+    color_token = ZALO_COLORS.get(style_input)
+    if color_token:
+        return color_token + ",b"
+    return style_input
+
+
+def markdown_to_zalo_styles(text, style_override=None):
     """Chuyển đổi markdown text sang Zalo RTF format với styles.
 
-    Hỗ trợ: **bold**, *italic*, ~~strikethrough~~
-    Sử dụng state machine (stack-based) để khớp cặp marker chính xác.
-    Marker không đóng đúng sẽ được giữ nguyên như text thường.
+    Args:
+        text: markdown text
+        style_override: style token (red/orange/yellow/green hoặc raw token như
+                        "i", "u", "c_db342e,b,f_18"). None/"off" = chỉ bold.
 
     Returns:
         dict với "msg" (plain text) và "styles" (list of style objects)
     """
     if not text or not isinstance(text, str):
-        _LOGGER.info("[markdown_to_zalo_styles] input is None or not str: %s", type(text))
+        _LOGGER.debug("[markdown_to_zalo_styles] input is None or not str: %s", type(text))
         return {"msg": text or "", "styles": []}
 
-    _LOGGER.info("[markdown_to_zalo_styles] INPUT len=%d first 300 chars: %s", len(text), text[:300])
+    _LOGGER.debug("[markdown_to_zalo_styles] INPUT len=%d first 300 chars: %s", len(text), text[:300])
 
     # Log all asterisk-like characters in the text
     for i, ch in enumerate(text):
         if ch == '*' or ord(ch) in (0x2217, 0xFE61, 0xFF0A, 0x204E, 0x2731, 0x2732):
             ctx = text[max(0, i - 10):i + 15]
-            _LOGGER.info("[markdown_to_zalo_styles] ASTERISK at pos=%d U+%04X ctx=%s", i, ord(ch), repr(ctx))
+            _LOGGER.debug("[markdown_to_zalo_styles] ASTERISK at pos=%d U+%04X ctx=%s", i, ord(ch), repr(ctx))
+
+    # Heading level -> Zalo style token
+    HEADING_STYLES = {
+        1: "f_20,b",   # H1: rất lớn + đậm
+        2: "f_18,b",   # H2: lớn + đậm
+        3: "b",        # H3: đậm (bình thường)
+        4: "f_13",     # H4: nhỏ
+        5: "f_13",     # H5: nhỏ
+        6: "f_13",     # H6: nhỏ
+    }
 
     # Phase 1: stack-based pair matching
     # Stack entries: (marker_str, open_pos_in_original, token)
@@ -58,48 +95,132 @@ def markdown_to_zalo_styles(text):
     i = 0
 
     while i < len(text):
+        # Link: [text](url) - keep URL, strip text
+        if text[i] == '[':
+            close_br = text.find('](', i)
+            if close_br != -1:
+                close_pr = text.find(')', close_br + 2)
+                if close_pr != -1:
+                    url = text[close_br + 2:close_pr]
+                    _LOGGER.debug("[markdown_to_zalo_styles]   pos=%d LINK url=%s",
+                                  i, repr(url[:50]))
+                    matched.append((i, close_pr + 1, url, ""))
+                    i = close_pr + 1
+                    continue
+
+        # Bold+Italic combo: ***text***
+        if i + 2 < len(text) and text[i:i + 3] == '***':
+            _LOGGER.debug("[markdown_to_zalo_styles]   pos=%d found '***' stack=%s", i, [(s[2], s[1]) for s in stack])
+            if stack and stack[-1][2] == 'bi':
+                _, open_pos, _ = stack.pop()
+                content = text[open_pos + 3:i]
+                _LOGGER.debug("[markdown_to_zalo_styles]   -> CLOSE bold+italic: open=%d close=%d content=%s", open_pos, i + 3, repr(content))
+                matched.append((open_pos, i + 3, content, 'b,i'))
+            else:
+                _LOGGER.debug("[markdown_to_zalo_styles]   -> OPEN bold+italic at pos=%d", i)
+                stack.append(('***', i, 'bi'))
+            i += 3
+            continue
+
+        # Markdown heading: # ## ### etc at line start
+        if text[i] == '#' and (i == 0 or text[i - 1] == '\n'):
+            level = 0
+            j = i
+            while j < len(text) and text[j] == '#':
+                level += 1
+                j += 1
+            if j < len(text) and text[j] == ' ':
+                j += 1
+            end = text.find('\n', j)
+            if end == -1:
+                end = len(text)
+            heading_style = HEADING_STYLES.get(level, "i")
+            content = text[j:end]
+            _LOGGER.debug("[markdown_to_zalo_styles]   pos=%d HEADING H%d style=%s content=%s",
+                         i, level, heading_style, repr(content[:50]))
+            matched.append((i, end, content, heading_style))
+            i = end
+            continue
+
+        # Blockquote: > at line start
+        if text[i] == '>' and (i == 0 or text[i - 1] == '\n'):
+            j = i + 1
+            if j < len(text) and text[j] == ' ':
+                j += 1
+            end = text.find('\n', j)
+            if end == -1:
+                end = len(text)
+            content = text[j:end]
+            _LOGGER.debug("[markdown_to_zalo_styles]   pos=%d BLOCKQUOTE style=i content=%s",
+                         i, repr(content[:50]))
+            matched.append((i, end, content, "i"))
+            i = end
+            continue
+
+        # Inline code: `text`
+        if text[i] == '`':
+            j = text.find('`', i + 1)
+            if j != -1:
+                content = text[i + 1:j]
+                _LOGGER.debug("[markdown_to_zalo_styles]   pos=%d INLINE CODE style=i content=%s",
+                             i, repr(content[:50]))
+                matched.append((i, j + 1, content, "i"))
+                i = j + 1
+                continue
+
         if i + 1 < len(text) and text[i:i + 2] == '**':
-            _LOGGER.info("[markdown_to_zalo_styles]   pos=%d found '**' stack=%s", i, [(s[2], s[1]) for s in stack])
+            _LOGGER.debug("[markdown_to_zalo_styles]   pos=%d found '**' stack=%s", i, [(s[2], s[1]) for s in stack])
             if stack and stack[-1][2] == 'b':
                 _, open_pos, _ = stack.pop()
                 content = text[open_pos + 2:i]
-                _LOGGER.info("[markdown_to_zalo_styles]   -> CLOSE bold: open=%d close=%d content=%s", open_pos, i + 2, repr(content))
+                _LOGGER.debug("[markdown_to_zalo_styles]   -> CLOSE bold: open=%d close=%d content=%s", open_pos, i + 2, repr(content))
                 matched.append((open_pos, i + 2, content, 'b'))
             else:
-                _LOGGER.info("[markdown_to_zalo_styles]   -> OPEN bold at pos=%d", i)
+                _LOGGER.debug("[markdown_to_zalo_styles]   -> OPEN bold at pos=%d", i)
                 stack.append(('**', i, 'b'))
             i += 2
         elif i + 1 < len(text) and text[i:i + 2] == '~~':
-            _LOGGER.info("[markdown_to_zalo_styles]   pos=%d found '~~' stack=%s", i, [(s[2], s[1]) for s in stack])
+            _LOGGER.debug("[markdown_to_zalo_styles]   pos=%d found '~~' stack=%s", i, [(s[2], s[1]) for s in stack])
             if stack and stack[-1][2] == 's':
                 _, open_pos, _ = stack.pop()
                 content = text[open_pos + 2:i]
-                _LOGGER.info("[markdown_to_zalo_styles]   -> CLOSE strike: open=%d close=%d content=%s", open_pos, i + 2, repr(content))
+                _LOGGER.debug("[markdown_to_zalo_styles]   -> CLOSE strike: open=%d close=%d content=%s", open_pos, i + 2, repr(content))
                 matched.append((open_pos, i + 2, content, 's'))
             else:
-                _LOGGER.info("[markdown_to_zalo_styles]   -> OPEN strike at pos=%d", i)
+                _LOGGER.debug("[markdown_to_zalo_styles]   -> OPEN strike at pos=%d", i)
                 stack.append(('~~', i, 's'))
             i += 2
+        elif i + 1 < len(text) and text[i:i + 2] == '__':
+            _LOGGER.debug("[markdown_to_zalo_styles]   pos=%d found '__' stack=%s", i, [(s[2], s[1]) for s in stack])
+            if stack and stack[-1][2] == 'u':
+                _, open_pos, _ = stack.pop()
+                content = text[open_pos + 2:i]
+                _LOGGER.debug("[markdown_to_zalo_styles]   -> CLOSE underline: open=%d close=%d content=%s", open_pos, i + 2, repr(content))
+                matched.append((open_pos, i + 2, content, 'u'))
+            else:
+                _LOGGER.debug("[markdown_to_zalo_styles]   -> OPEN underline at pos=%d", i)
+                stack.append(('__', i, 'u'))
+            i += 2
         elif text[i] == '*':
-            _LOGGER.info("[markdown_to_zalo_styles]   pos=%d found '*' stack=%s", i, [(s[2], s[1]) for s in stack])
+            _LOGGER.debug("[markdown_to_zalo_styles]   pos=%d found '*' stack=%s", i, [(s[2], s[1]) for s in stack])
             if stack and stack[-1][2] == 'i':
                 _, open_pos, _ = stack.pop()
                 content = text[open_pos + 1:i]
-                _LOGGER.info("[markdown_to_zalo_styles]   -> CLOSE italic: open=%d close=%d content=%s", open_pos, i + 1, repr(content))
+                _LOGGER.debug("[markdown_to_zalo_styles]   -> CLOSE italic: open=%d close=%d content=%s", open_pos, i + 1, repr(content))
                 matched.append((open_pos, i + 1, content, 'i'))
             else:
-                _LOGGER.info("[markdown_to_zalo_styles]   -> OPEN italic at pos=%d", i)
+                _LOGGER.debug("[markdown_to_zalo_styles]   -> OPEN italic at pos=%d", i)
                 stack.append(('*', i, 'i'))
             i += 1
         else:
             i += 1
 
-    _LOGGER.info("[markdown_to_zalo_styles] DONE scanning: matched=%d unclosed=%d", len(matched), len(stack))
+    _LOGGER.debug("[markdown_to_zalo_styles] DONE scanning: matched=%d unclosed=%d", len(matched), len(stack))
     if stack:
-        _LOGGER.info("[markdown_to_zalo_styles] Unclosed markers: %s", [(s[2], s[1]) for s in stack])
+        _LOGGER.debug("[markdown_to_zalo_styles] Unclosed markers: %s", [(s[2], s[1]) for s in stack])
 
     if not matched:
-        _LOGGER.info("[markdown_to_zalo_styles] OUTPUT: no styles, msg same as input")
+        _LOGGER.debug("[markdown_to_zalo_styles] OUTPUT: no styles, msg same as input")
         return {"msg": text, "styles": []}
 
     matched.sort(key=lambda m: m[0])
@@ -131,12 +252,29 @@ def markdown_to_zalo_styles(text):
         s["start"] = _py_to_js_pos(final_msg, s["start"])
         s["len"] = _js_len(content)
 
+    # Apply style_override to all bold styles (including heading bold)
+    override_token = _resolve_style_token(style_override)
+    if override_token:
+        count = 0
+        for s in styles:
+            tokens = s["st"].split(",")
+            if "b" in tokens:
+                # Replace 'b' with the override (e.g. 'f_20,b' -> 'f_20,c_db342e,b')
+                new_tokens = [override_token if t == "b" else t for t in tokens]
+                s["st"] = ",".join(new_tokens)
+                count += 1
+        _LOGGER.debug("[markdown_to_zalo_styles] style_override=%s -> token=%s applied to %d bold styles",
+                     style_override, override_token, count)
+
+    # Filter out no-style entries (links, etc.)
+    styles = [s for s in styles if s["st"] != ""]
+
     # Log final styles with the text they apply to
     for s in styles:
         highlighted = final_msg[s["start"]:s["start"] + s["len"]]
-        _LOGGER.info("[markdown_to_zalo_styles] STYLE [%d:%d] st=%s text=%s", s["start"], s["start"] + s["len"], s["st"], repr(highlighted))
+        _LOGGER.debug("[markdown_to_zalo_styles] STYLE [%d:%d] st=%s text=%s", s["start"], s["start"] + s["len"], s["st"], repr(highlighted))
 
-    _LOGGER.info("[markdown_to_zalo_styles] OUTPUT: msg len=%d styles=%d", len(final_msg), len(styles))
+    _LOGGER.debug("[markdown_to_zalo_styles] OUTPUT: msg len=%d styles=%d", len(final_msg), len(styles))
 
     return {"msg": final_msg, "styles": styles}
 
@@ -172,8 +310,19 @@ async def async_send_message_service(hass, call, zalo_login):
                     quote["msgType"] = msg_type_quote
 
         raw_message = call.data["message"]
-        _LOGGER.info("[send_message] RAW message (len=%d): %s", len(raw_message), raw_message[:500])
-        parsed = markdown_to_zalo_styles(raw_message)
+
+        # Read markdown config from HA entities
+        enabled = hass.data.get(DOMAIN, {}).get("markdown_enabled", True)
+        color = hass.data.get(DOMAIN, {}).get("markdown_color", "none")
+
+        _LOGGER.debug("[send_message] RAW message (len=%d) markdown=%s color=%s: %s",
+                     len(raw_message), enabled, color, raw_message[:500])
+
+        if not enabled:
+            parsed = {"msg": raw_message, "styles": []}
+        else:
+            style = None if color == "none" else color
+            parsed = markdown_to_zalo_styles(raw_message, style)
 
         msg_obj = {
             "msg": parsed["msg"],
@@ -181,9 +330,9 @@ async def async_send_message_service(hass, call, zalo_login):
         }
         if parsed["styles"]:
             msg_obj["styles"] = parsed["styles"]
-            _LOGGER.info("[send_message] Including %d styles in payload", len(parsed["styles"]))
+            _LOGGER.debug("[send_message] Including %d styles in payload", len(parsed["styles"]))
         else:
-            _LOGGER.info("[send_message] No styles detected, sending plain text")
+            _LOGGER.debug("[send_message] No styles detected, sending plain text")
         if quote:
             msg_obj["quote"] = quote
 
@@ -193,8 +342,8 @@ async def async_send_message_service(hass, call, zalo_login):
             "accountSelection": call.data["account_selection"],
             "type": 1 if msg_type == "1" else 0
         }
-        _LOGGER.info("[send_message] PAYLOAD message keys: %s", list(msg_obj.keys()))
-        _LOGGER.info("[send_message] PAYLOAD threadId=%s type=%s accountSelection=%s",
+        _LOGGER.debug("[send_message] PAYLOAD message keys: %s", list(msg_obj.keys()))
+        _LOGGER.debug("[send_message] PAYLOAD threadId=%s type=%s accountSelection=%s",
                      payload["threadId"], payload["type"], payload["accountSelection"])
         _LOGGER.debug("Gửi POST đến %s/api/sendMessageByAccount với payload: %s",
                     zalo_server, payload)

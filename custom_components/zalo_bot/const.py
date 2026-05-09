@@ -13,8 +13,14 @@ CONF_ENABLE_NOTIFICATIONS = "enable_notifications"
 DEFAULT_ENABLE_NOTIFICATIONS = True
 SIGNAL_NOTIFICATION_TOGGLE = f"{DOMAIN}_notification_toggle"
 
+# Markdown config keys
+CONF_MARKDOWN_ENABLED = "markdown_enabled"
+CONF_MARKDOWN_COLOR = "markdown_color"
+DEFAULT_MARKDOWN_ENABLED = True
+DEFAULT_MARKDOWN_COLOR = "none"
+
 # Platforms
-PLATFORMS = [Platform.SWITCH, Platform.BINARY_SENSOR, Platform.BUTTON]
+PLATFORMS = [Platform.SWITCH, Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SELECT]
 
 # Signal
 SIGNAL_NOTIFICATION_TOGGLE = f"{DOMAIN}_notification_toggle"
