@@ -80,7 +80,7 @@ class ZaloBotMarkdownSwitch(SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        return self.hass.data[DOMAIN].get(CONF_MARKDOWN_ENABLED, DEFAULT_MARKDOWN_ENABLED)
+        return self.config_entry.data.get(CONF_MARKDOWN_ENABLED, DEFAULT_MARKDOWN_ENABLED)
 
     async def async_turn_on(self, *_) -> None:
         await self._update_config(True)
