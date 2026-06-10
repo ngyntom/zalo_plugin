@@ -25,7 +25,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             return self.async_create_entry(
-                title="Zalo Bot",
+                title="Zalo Plugin",
                 data=user_input
             )
 
