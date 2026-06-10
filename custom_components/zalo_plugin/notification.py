@@ -42,7 +42,7 @@ async def show_result_notification(hass, service_name, resp, error=None):
                 {
                     "message": f"Lỗi khi thực hiện {service_name}: {str(error)}",
                     "title": f"Zalo Bot - Lỗi {service_name}",
-                    "notification_id": f"zalo_bot_{service_name}_error_{int(time.time())}"
+                    "notification_id": f"zalo_plugin_{service_name}_error_{int(time.time())}"
                 }
             )
             return
@@ -105,7 +105,7 @@ async def show_result_notification(hass, service_name, resp, error=None):
                     {
                         "message": f"Thực hiện {service_name} thành công!\n\n{message}",
                         "title": f"Zalo Bot - {service_name} thành công",
-                        "notification_id": f"zalo_bot_{service_name}_{int(time.time())}"
+                        "notification_id": f"zalo_plugin_{service_name}_{int(time.time())}"
                     }
                 )
             else:
@@ -115,7 +115,7 @@ async def show_result_notification(hass, service_name, resp, error=None):
                     {
                         "message": f"Thực hiện {service_name} thất bại!\nLỗi: {message}",
                         "title": f"Zalo Bot - {service_name} thất bại",
-                        "notification_id": f"zalo_bot_{service_name}_{int(time.time())}"
+                        "notification_id": f"zalo_plugin_{service_name}_{int(time.time())}"
                     }
                 )
         except Exception as e:
@@ -126,7 +126,7 @@ async def show_result_notification(hass, service_name, resp, error=None):
                 {
                     "message": f"Lỗi khi hiển thị kết quả: {str(e)}",
                     "title": "Zalo Bot - Lỗi hiển thị",
-                    "notification_id": f"zalo_bot_notification_error_{int(time.time())}"
+                    "notification_id": f"zalo_plugin_notification_error_{int(time.time())}"
                 }
             )
     except Exception as e:
