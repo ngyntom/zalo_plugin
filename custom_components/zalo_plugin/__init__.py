@@ -126,10 +126,10 @@ PUBLIC_DIR = None
 
 def get_device_info():
     return DeviceInfo(
-        identifiers={(DOMAIN, "zalo_bot")},
-        name="Zalo Bot",
-        manufacturer="Smarthome Black",
-        model="Zalo Bot",
+        identifiers={(DOMAIN, "zalo_plugin")},
+        name="Zalo Plugin",
+        manufacturer="ngyntom",
+        model="Zalo Plugin",
         sw_version="2026.5.10",
     )
 
