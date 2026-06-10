@@ -172,7 +172,7 @@ async def async_setup_entry(hass, entry):
     # Thiết lập đường dẫn thư mục
     config_dir = hass.config.path()
     WWW_DIR = os.path.join(config_dir, "www")
-    PUBLIC_DIR = os.path.join(WWW_DIR, "zalo_bot")
+    PUBLIC_DIR = os.path.join(WWW_DIR, "zalo_plugin")
     
     # Cập nhật biến PUBLIC_DIR trong file_handling.py
     from . import file_handling
