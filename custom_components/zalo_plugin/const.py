@@ -3,7 +3,7 @@ from homeassistant.const import Platform
 import voluptuous as vol
 import homeassistant.helpers.config_validation as cv
 
-DOMAIN = "zalo_bot"
+DOMAIN = "zalo_plugin"
 
 # Configuration constants
 CONF_ZALO_SERVER = "zalo_server"
