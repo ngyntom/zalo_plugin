@@ -18,4 +18,4 @@ Nếu không sử dụng HACS, bạn có thể cài đặt thủ công như sau:
 - Tải mã nguồn repo này về máy.
 - Sao chép thư mục `custom_components/zalo_plugin` vào thư mục `custom_components` trong thư mục cấu hình Home Assistant của bạn.
 - Khởi động lại Home Assistant.
-- Vào Cài đặt > Thiết bị & Dịch vụ > Thêm tích hợp mới > Chọn "Zalo Bot" và cấu hình theo hướng dẫn.
+- Vào Cài đặt > Thiết bị & Dịch vụ > Thêm tích hợp mới > Chọn "Zalo Plugin" và cấu hình theo hướng dẫn.
